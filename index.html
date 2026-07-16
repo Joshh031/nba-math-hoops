@@ -359,6 +359,12 @@ function makeLocalStore(onItems, onStatus) {
   return {
     set(id, item) { const o = read(); o[id] = item; write(o); onItems(o); },
     remove(id)    { const o = read(); delete o[id]; write(o); onItems(o); },
+    logDone(entry) {
+      const HKEY = 'shoplist-history-v1';
+      let h = []; try { h = JSON.parse(localStorage.getItem(HKEY)) || []; } catch {}
+      h.push(entry);
+      localStorage.setItem(HKEY, JSON.stringify(h.slice(-500)));
+    },
   };
 }
 
@@ -392,12 +398,15 @@ function makeFirebaseStore(config, onItems, onStatus, onFail) {
         () => { onFail('Firebase rejected reads — check your database rules.'); });
       db.ref('.info/connected').on('value', (snap) => onStatus(!!snap.val()));
       api = ref;
+      histApi = db.ref('lists/family/history');
     })
     .catch(() => onFail('Could not load Firebase — check your internet connection.'));
 
+  let histApi = null;
   return {
     set(id, item) { if (api) api.child(id).set(item); },
     remove(id)    { if (api) api.child(id).remove(); },
+    logDone(entry) { if (histApi) histApi.push(entry); },
   };
 }
 
@@ -508,7 +517,11 @@ window.toggleItem = (id) => {
   const it = items[id];
   if (!it) return;
   store.set(id, { ...it, d: !it.d, t: Date.now() });
-  if (!it.d && navigator.vibrate) navigator.vibrate(15);
+  if (!it.d) {
+    // just checked off = purchased; the history powers restock reminders
+    store.logDone?.({ n: it.n, c: it.c || 'other', t: Date.now(), by: it.by || '' });
+    if (navigator.vibrate) navigator.vibrate(15);
+  }
 };
 
 window.cyclePriority = (id) => {
