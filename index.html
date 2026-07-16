@@ -74,16 +74,6 @@
   .sync-pill.live .sync-dot { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .sync-pill.live { color: var(--accent); }
 
-  /* ---------- Setup banner ---------- */
-  .banner {
-    margin: 4px 16px 8px; padding: 12px 14px;
-    background: var(--amber-soft); color: var(--amber-text);
-    border-radius: var(--radius); font-size: 14px; line-height: 1.45;
-    display: flex; gap: 10px; align-items: flex-start;
-  }
-  .banner a { color: inherit; font-weight: 700; }
-  .banner button { background: none; border: none; color: inherit; font-size: 18px; padding: 0 2px; line-height: 1; }
-
   /* ---------- Priority sections ---------- */
   main { padding: 4px 16px; max-width: 640px; margin: 0 auto; }
   .section { margin-bottom: 18px; }
@@ -262,13 +252,6 @@
     <span class="sync-dot"></span><span id="syncLabel">Local</span>
   </button>
 </header>
-
-<div id="setupBanner" class="banner" hidden>
-  <span>📱 <b>Local mode</b> — items are only saved on this device. To share the list live
-  with your wife, do the 10-minute setup in the
-  <a href="https://github.com/Joshh031/nba-math-hoops#-set-up-live-sync-10-minutes" target="_blank" rel="noopener">README</a>.</span>
-  <button id="bannerClose" aria-label="Dismiss">×</button>
-</div>
 
 <main id="list"></main>
 
@@ -773,10 +756,6 @@ $('syncPill').onclick = () => {
 };
 
 $('whoamiBtn').onclick = () => askName(false);
-$('bannerClose').onclick = () => {
-  $('setupBanner').hidden = true;
-  sessionStorage.setItem('banner-dismissed', '1');
-};
 
 (function boot() {
   if (window.FIREBASE_CONFIG) {
@@ -787,7 +766,6 @@ $('bannerClose').onclick = () => {
     render();
   } else {
     store = makeLocalStore(onItems, onStatus);
-    if (!sessionStorage.getItem('banner-dismissed')) $('setupBanner').hidden = false;
   }
   $('whoamiBtn').textContent = userName ? `👤 ${userName}` : '👤 Set name';
   if (!userName) askName(true);
