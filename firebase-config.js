@@ -23,4 +23,12 @@
 //  but access is controlled by your database rules.)
 // ============================================================
 
-window.FIREBASE_CONFIG = null;
+window.FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDYs_D32KVp7IaiIizmDXYzaDxVOq_eEDU",
+  authDomain: "fngleague-d7ffe.firebaseapp.com",
+  databaseURL: "https://fngleague-d7ffe-default-rtdb.firebaseio.com",
+  projectId: "fngleague-d7ffe",
+  storageBucket: "fngleague-d7ffe.firebasestorage.app",
+  messagingSenderId: "684646026933",
+  appId: "1:684646026933:web:436d6a40cf9b84de46b8fc"
+};
