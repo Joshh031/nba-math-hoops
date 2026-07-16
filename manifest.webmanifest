@@ -1,0 +1,12 @@
+{
+  "name": "Our Shopping List",
+  "short_name": "Our List",
+  "description": "A real-time shared shopping list for two — typing or voice, auto-categorized, with priorities.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f6f7f9",
+  "theme_color": "#10b981",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
