@@ -29,7 +29,7 @@ The app deploys itself to GitHub Pages automatically — after one switch is fli
 
 1. **One-time:** go to **Settings → Pages** in this repo and set **Source** to **GitHub Actions**. (GitHub requires the owner to do this by hand — until then the deploy workflow fails with "Resource not accessible by integration".)
 2. Go to the **Actions** tab, open the failed **Deploy to GitHub Pages** run, and click **Re-run all jobs** (or just push any commit).
-3. Your list is now live at: `https://joshh031.github.io/nba-math-hoops/`
+3. Your list is now live at: `https://joshh031.github.io/shopping-list/`
 4. Open that link on both phones. In your browser menu choose **Add to Home Screen** — now it's an app icon.
 
 > 💡 Until you set up live sync below, the list is saved per-device (great for trying it out).
