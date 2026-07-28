@@ -66,16 +66,17 @@ Live sync uses **Firebase** (Google, free tier — a family shopping list won't 
 
 ## 🥕 Instacart delivery
 
-Tap the **🥕** button in the app header to turn your list into an Instacart
-shopping page — pick a scope (🔴 today / 🔴+🟡 / everything), and the items open
-on Instacart ready to add to a cart for delivery.
+Tap the **🥕** button in the app header, pick a scope (🔴 today / 🔴+🟡 /
+everything), and shop the list on Instacart:
 
-One-time setup: create a free API key at
-[instacart.com/developers](https://www.instacart.com/developers), paste it into
-the app when the 🥕 sheet asks for it, and it syncs to both phones (it's stored
-in your Firebase database, not in this repo). If Instacart blocks the direct
-browser connection, the app falls back to per-item search links plus a
-copy-the-list button.
+- **Default (no setup):** each item becomes a tap-to-search Instacart link, plus
+  a copy-the-whole-list button.
+- **One-tap mode (needs an API key):** if you have an
+  [Instacart Developer Platform](https://docs.instacart.com/developer_platform_api/)
+  API key — their program is currently invite-only — paste it under
+  "⚙️ Have an Instacart API key?" in the 🥕 sheet. The button then creates a
+  ready-made Instacart shopping page with everything pre-added. The key is
+  stored in your Firebase database (not in this repo) and syncs to both phones.
 
 ## 🧪 Try it locally
 

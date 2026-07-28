@@ -766,88 +766,123 @@ const scopeFilter = {
   all:   () => true,
 };
 
+function wireScope(sheet, getScope, setScope, onChange) {
+  const btns = sheet.querySelectorAll('#icScope button');
+  const paint = () => btns.forEach((b) => b.classList.toggle('on', b.dataset.s === getScope()));
+  btns.forEach((b) => b.onclick = () => { setScope(b.dataset.s); paint(); onChange?.(); });
+  paint();
+}
+
 $('instacartBtn').onclick = () => {
   const active = activeItems();
   if (!active.length) { showToast('Nothing on the list to order 🎉'); return; }
   const n = (s) => active.filter(scopeFilter[s]).length;
   let scope = n('today') ? 'today' : 'all';
-
-  openSheet(`
-    <h2>🥕 Send to Instacart</h2>
-    <p class="sub">Creates an Instacart page with these items ready to add to a cart for delivery.</p>
+  const sel = () => activeItems().filter(scopeFilter[scope]);
+  const scopeHtml = `
     <div class="ic-scope" id="icScope">
       <button data-s="today">🔴 Today (${n('today')})</button>
       <button data-s="soon">🔴+🟡 (${n('soon')})</button>
       <button data-s="all">Everything (${active.length})</button>
-    </div>
-    ${instacartKey ? '' : `
-      <p class="sub"><b>One-time setup:</b> create a free API key at
-      <a href="https://www.instacart.com/developers" target="_blank" rel="noopener">instacart.com/developers</a>
-      (sign up → create key), paste it below once, and it syncs to both phones.</p>
-      <input class="name-input" id="icKey" type="text" placeholder="Paste Instacart API key…" autocomplete="off">
-    `}
-    <button class="primary-btn" id="icGo">Create Instacart list</button>
-  `, (sheet, close) => {
-    const scopeBtns = sheet.querySelectorAll('#icScope button');
-    const paint = () => scopeBtns.forEach((b) => b.classList.toggle('on', b.dataset.s === scope));
-    scopeBtns.forEach((b) => b.onclick = () => { scope = b.dataset.s; paint(); });
-    paint();
+    </div>`;
 
-    const go = sheet.querySelector('#icGo');
-    go.onclick = async () => {
-      const keyField = sheet.querySelector('#icKey');
-      const key = instacartKey || (keyField && keyField.value.trim());
-      if (!key) { keyField?.focus(); return; }
-      const sel = activeItems().filter(scopeFilter[scope]);
-      if (!sel.length) { showToast('No items in that group'); return; }
-
-      go.disabled = true;
-      go.textContent = 'Creating…';
-      try {
-        const resp = await fetch('https://connect.instacart.com/idp/v1/products/products_link', {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Bearer ' + key,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify({
-            title: 'Our Shopping List',
-            link_type: 'shopping_list',
-            line_items: sel.map((i) => ({ name: i.n })),
-          }),
-        });
-        if (resp.status === 401 || resp.status === 403) {
-          go.disabled = false; go.textContent = 'Create Instacart list';
-          showToast('⚠️ Instacart rejected the API key — double-check it.', { duration: 6000 });
-          return;
+  if (instacartKey) {
+    // One-tap mode: the Instacart API builds a ready-to-shop page
+    openSheet(`
+      <h2>🥕 Send to Instacart</h2>
+      <p class="sub">Creates an Instacart page with these items ready to add to a cart for delivery.</p>
+      ${scopeHtml}
+      <button class="primary-btn" id="icGo">Create Instacart list</button>
+    `, (sheet, close) => {
+      wireScope(sheet, () => scope, (s) => scope = s);
+      const go = sheet.querySelector('#icGo');
+      go.onclick = async () => {
+        const chosen = sel();
+        if (!chosen.length) { showToast('No items in that group'); return; }
+        go.disabled = true;
+        go.textContent = 'Creating…';
+        try {
+          const resp = await fetch('https://connect.instacart.com/idp/v1/products/products_link', {
+            method: 'POST',
+            headers: {
+              'Authorization': 'Bearer ' + instacartKey,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: JSON.stringify({
+              title: 'Our Shopping List',
+              link_type: 'shopping_list',
+              line_items: chosen.map((i) => ({ name: i.n })),
+            }),
+          });
+          if (resp.status === 401 || resp.status === 403) {
+            go.disabled = false; go.textContent = 'Create Instacart list';
+            showToast('⚠️ Instacart rejected the API key — double-check it.', { duration: 6000 });
+            return;
+          }
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          const data = await resp.json();
+          if (!data.products_link_url) throw new Error('no URL in response');
+          close();
+          showToast('Instacart list ready 🥕');
+          window.open(data.products_link_url, '_blank');
+        } catch (err) {
+          // CORS block or network failure — fall back to per-item search links
+          close();
+          instacartLinksSheet(chosen, true);
         }
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const data = await resp.json();
-        if (!data.products_link_url) throw new Error('no URL in response');
-        if (keyField && !instacartKey) store.setConfig('instacartKey', key);
-        close();
-        showToast('Instacart list ready 🥕');
-        window.open(data.products_link_url, '_blank');
-      } catch (err) {
-        // CORS block or network failure — fall back to per-item search links
-        if (keyField && keyField.value.trim() && !instacartKey) store.setConfig('instacartKey', key);
-        close();
-        instacartFallback(sel);
-      }
+      };
+    });
+    return;
+  }
+
+  // Default mode (no API key): per-item Instacart search links + copy
+  openSheet(`
+    <h2>🥕 Shop on Instacart</h2>
+    <p class="sub">Tap an item to open it on Instacart, or copy the whole list and paste it there.</p>
+    ${scopeHtml}
+    <div class="ic-list" id="icList"></div>
+    <button class="primary-btn" id="icCopy">📋 Copy list</button>
+    <details style="margin-top:14px">
+      <summary style="cursor:pointer; color:var(--text-soft); font-size:14px; font-weight:600">⚙️ Have an Instacart API key?</summary>
+      <p class="sub" style="margin-top:8px">An Instacart Developer Platform key (their program is currently
+      invite-only) upgrades this button to create a one-tap shopping page with everything pre-added.
+      Paste it once and it syncs to both phones.</p>
+      <input class="name-input" id="icKey" type="text" placeholder="Paste Instacart API key…" autocomplete="off">
+      <button class="primary-btn" id="icSave">Save key</button>
+    </details>
+  `, (sheet, close) => {
+    const renderLinks = () => {
+      sheet.querySelector('#icList').innerHTML = sel().map((i) =>
+        `<a href="https://www.instacart.com/store/s?k=${encodeURIComponent(i.n)}" target="_blank" rel="noopener">🔎 ${esc(i.n)}</a>`
+      ).join('');
+    };
+    wireScope(sheet, () => scope, (s) => scope = s, renderLinks);
+    renderLinks();
+    sheet.querySelector('#icCopy').onclick = () => {
+      navigator.clipboard?.writeText(sel().map((i) => i.n).join('\n'))
+        .then(() => showToast('List copied 📋'))
+        .catch(() => showToast('Copy failed — long-press to select instead'));
+    };
+    sheet.querySelector('#icSave').onclick = () => {
+      const v = sheet.querySelector('#icKey').value.trim();
+      if (!v) { sheet.querySelector('#icKey').focus(); return; }
+      store.setConfig('instacartKey', v);
+      close();
+      showToast('Key saved — tap 🥕 again for one-tap lists');
     };
   });
 };
 
-function instacartFallback(sel) {
+function instacartLinksSheet(sel, apiFailed) {
   const links = sel.map((i) =>
     `<a href="https://www.instacart.com/store/s?k=${encodeURIComponent(i.n)}" target="_blank" rel="noopener">🔎 ${esc(i.n)}</a>`
   ).join('');
   openSheet(`
     <h2>🥕 Open on Instacart</h2>
-    <p class="sub">Couldn't create the list automatically (Instacart blocked the direct
-    connection from the browser). Tap items to search them on Instacart, or copy the
-    whole list and paste it there.</p>
+    <p class="sub">${apiFailed
+      ? 'Couldn’t create the list automatically (Instacart blocked the direct connection from the browser). Tap items to search them instead, or copy the list.'
+      : 'Tap items to search them on Instacart, or copy the whole list.'}</p>
     <div class="ic-list">${links}</div>
     <button class="primary-btn" id="icCopy">📋 Copy list</button>
   `, (sheet) => {
