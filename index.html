@@ -221,6 +221,18 @@
     width: 100%; height: 50px; border-radius: 12px; border: 2px solid var(--line);
     background: var(--bg); color: var(--text); padding: 0 14px; font-size: 17px; outline: none;
   }
+  .ic-scope { display: flex; gap: 6px; margin: 4px 0 14px; }
+  .ic-scope button {
+    flex: 1; border: 2px solid var(--line); border-radius: 999px;
+    font-size: 12.5px; font-weight: 700; padding: 8px 4px;
+    background: var(--bg); color: var(--text-soft);
+  }
+  .ic-scope button.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+  .ic-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; max-height: 40vh; overflow-y: auto; }
+  .ic-list a {
+    display: block; padding: 12px 14px; background: var(--bg); border-radius: 12px;
+    color: var(--text); font-weight: 600; text-decoration: none;
+  }
   .name-input:focus { border-color: var(--accent); }
   .primary-btn {
     width: 100%; margin-top: 14px; height: 50px; border: none; border-radius: 12px;
@@ -247,6 +259,7 @@
 
 <header>
   <h1>🛒 Our List</h1>
+  <button class="whoami" id="instacartBtn" title="Send list to Instacart">🥕</button>
   <button class="whoami" id="whoamiBtn" title="Change your name">…</button>
   <button class="sync-pill" id="syncPill" title="Sync status">
     <span class="sync-dot"></span><span id="syncLabel">Local</span>
@@ -331,17 +344,24 @@ function detectCategory(name) {
 // Both backends expose: set(id, item), remove(id), and fire
 // onItems(itemsObj) + onStatus(isLive) callbacks.
 
-function makeLocalStore(onItems, onStatus) {
+function makeLocalStore(onItems, onStatus, onConfig) {
   const KEY = 'shoplist-items-v1';
+  const CKEY = 'shoplist-config-v1';
   const read = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } };
+  const readC = () => { try { return JSON.parse(localStorage.getItem(CKEY)) || {}; } catch { return {}; } };
   const write = (obj) => localStorage.setItem(KEY, JSON.stringify(obj));
   // storage events sync the list across tabs on the same device
-  window.addEventListener('storage', (e) => { if (e.key === KEY) onItems(read()); });
+  window.addEventListener('storage', (e) => {
+    if (e.key === KEY) onItems(read());
+    if (e.key === CKEY) onConfig(readC());
+  });
   onStatus(false);
   onItems(read());
+  onConfig(readC());
   return {
     set(id, item) { const o = read(); o[id] = item; write(o); onItems(o); },
     remove(id)    { const o = read(); delete o[id]; write(o); onItems(o); },
+    setConfig(key, val) { const c = readC(); c[key] = val; localStorage.setItem(CKEY, JSON.stringify(c)); onConfig(c); },
     logDone(entry) {
       const HKEY = 'shoplist-history-v1';
       let h = []; try { h = JSON.parse(localStorage.getItem(HKEY)) || []; } catch {}
@@ -351,7 +371,7 @@ function makeLocalStore(onItems, onStatus) {
   };
 }
 
-function makeFirebaseStore(config, onItems, onStatus, onFail) {
+function makeFirebaseStore(config, onItems, onStatus, onFail, onConfig) {
   const load = (src) => new Promise((res, rej) => {
     const s = document.createElement('script');
     s.src = src; s.onload = res; s.onerror = rej;
@@ -382,14 +402,18 @@ function makeFirebaseStore(config, onItems, onStatus, onFail) {
       db.ref('.info/connected').on('value', (snap) => onStatus(!!snap.val()));
       api = ref;
       histApi = db.ref('lists/family/history');
+      confApi = db.ref('lists/family/config');
+      confApi.on('value', (snap) => onConfig(snap.val() || {}));
     })
     .catch(() => onFail('Could not load Firebase — check your internet connection.'));
 
   let histApi = null;
+  let confApi = null;
   return {
     set(id, item) { if (api) api.child(id).set(item); },
     remove(id)    { if (api) api.child(id).remove(); },
     logDone(entry) { if (histApi) histApi.push(entry); },
+    setConfig(key, val) { if (confApi) confApi.child(key).set(val); },
   };
 }
 
@@ -730,6 +754,111 @@ function addFromSpeech(text) {
   return added;
 }
 
+/* ================= Instacart ================= */
+
+let instacartKey = null;
+function onConfigCb(c) { instacartKey = (c && c.instacartKey) || null; }
+
+const activeItems = () => Object.entries(items).map(([id, it]) => ({ id, ...it })).filter((i) => !i.d);
+const scopeFilter = {
+  today: (i) => i.p === 'today',
+  soon:  (i) => i.p === 'today' || i.p === 'soon',
+  all:   () => true,
+};
+
+$('instacartBtn').onclick = () => {
+  const active = activeItems();
+  if (!active.length) { showToast('Nothing on the list to order 🎉'); return; }
+  const n = (s) => active.filter(scopeFilter[s]).length;
+  let scope = n('today') ? 'today' : 'all';
+
+  openSheet(`
+    <h2>🥕 Send to Instacart</h2>
+    <p class="sub">Creates an Instacart page with these items ready to add to a cart for delivery.</p>
+    <div class="ic-scope" id="icScope">
+      <button data-s="today">🔴 Today (${n('today')})</button>
+      <button data-s="soon">🔴+🟡 (${n('soon')})</button>
+      <button data-s="all">Everything (${active.length})</button>
+    </div>
+    ${instacartKey ? '' : `
+      <p class="sub"><b>One-time setup:</b> create a free API key at
+      <a href="https://www.instacart.com/developers" target="_blank" rel="noopener">instacart.com/developers</a>
+      (sign up → create key), paste it below once, and it syncs to both phones.</p>
+      <input class="name-input" id="icKey" type="text" placeholder="Paste Instacart API key…" autocomplete="off">
+    `}
+    <button class="primary-btn" id="icGo">Create Instacart list</button>
+  `, (sheet, close) => {
+    const scopeBtns = sheet.querySelectorAll('#icScope button');
+    const paint = () => scopeBtns.forEach((b) => b.classList.toggle('on', b.dataset.s === scope));
+    scopeBtns.forEach((b) => b.onclick = () => { scope = b.dataset.s; paint(); });
+    paint();
+
+    const go = sheet.querySelector('#icGo');
+    go.onclick = async () => {
+      const keyField = sheet.querySelector('#icKey');
+      const key = instacartKey || (keyField && keyField.value.trim());
+      if (!key) { keyField?.focus(); return; }
+      const sel = activeItems().filter(scopeFilter[scope]);
+      if (!sel.length) { showToast('No items in that group'); return; }
+
+      go.disabled = true;
+      go.textContent = 'Creating…';
+      try {
+        const resp = await fetch('https://connect.instacart.com/idp/v1/products/products_link', {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + key,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({
+            title: 'Our Shopping List',
+            link_type: 'shopping_list',
+            line_items: sel.map((i) => ({ name: i.n })),
+          }),
+        });
+        if (resp.status === 401 || resp.status === 403) {
+          go.disabled = false; go.textContent = 'Create Instacart list';
+          showToast('⚠️ Instacart rejected the API key — double-check it.', { duration: 6000 });
+          return;
+        }
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        if (!data.products_link_url) throw new Error('no URL in response');
+        if (keyField && !instacartKey) store.setConfig('instacartKey', key);
+        close();
+        showToast('Instacart list ready 🥕');
+        window.open(data.products_link_url, '_blank');
+      } catch (err) {
+        // CORS block or network failure — fall back to per-item search links
+        if (keyField && keyField.value.trim() && !instacartKey) store.setConfig('instacartKey', key);
+        close();
+        instacartFallback(sel);
+      }
+    };
+  });
+};
+
+function instacartFallback(sel) {
+  const links = sel.map((i) =>
+    `<a href="https://www.instacart.com/store/s?k=${encodeURIComponent(i.n)}" target="_blank" rel="noopener">🔎 ${esc(i.n)}</a>`
+  ).join('');
+  openSheet(`
+    <h2>🥕 Open on Instacart</h2>
+    <p class="sub">Couldn't create the list automatically (Instacart blocked the direct
+    connection from the browser). Tap items to search them on Instacart, or copy the
+    whole list and paste it there.</p>
+    <div class="ic-list">${links}</div>
+    <button class="primary-btn" id="icCopy">📋 Copy list</button>
+  `, (sheet) => {
+    sheet.querySelector('#icCopy').onclick = () => {
+      navigator.clipboard?.writeText(sel.map((i) => i.n).join('\n'))
+        .then(() => showToast('List copied 📋'))
+        .catch(() => showToast('Copy failed — long-press to select instead'));
+    };
+  });
+}
+
 /* ================= Sync status & boot ================= */
 
 function onItems(obj) { items = obj || {}; render(); }
@@ -761,11 +890,11 @@ $('whoamiBtn').onclick = () => askName(false);
   if (window.FIREBASE_CONFIG) {
     store = makeFirebaseStore(window.FIREBASE_CONFIG, onItems, onStatus, (msg) => {
       showToast('⚠️ ' + msg, { duration: 8000 });
-      store = makeLocalStore(onItems, onStatus);
-    });
+      store = makeLocalStore(onItems, onStatus, onConfigCb);
+    }, onConfigCb);
     render();
   } else {
-    store = makeLocalStore(onItems, onStatus);
+    store = makeLocalStore(onItems, onStatus, onConfigCb);
   }
   $('whoamiBtn').textContent = userName ? `👤 ${userName}` : '👤 Set name';
   if (!userName) askName(true);
